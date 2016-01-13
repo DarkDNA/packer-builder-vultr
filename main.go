@@ -6,63 +6,67 @@ import (
 	"log"
 	"os"
 	"time"
-  "github.com/askholme/vultr"
+
+	"github.com/askholme/vultr"
+
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/common"
+	"github.com/mitchellh/packer/helper/config"
+	"github.com/mitchellh/packer/helper/communicator"
 	"github.com/mitchellh/packer/packer"
 	"github.com/mitchellh/packer/packer/plugin"
+	"github.com/mitchellh/packer/template/interpolate"
 )
+
 const DefaultOs = "Debian 7 x64 (wheezy)"
 const DefaultPlan = "768 MB RAM,15 GB SSD,1.00 TB BW"
 const DefaultRegion = "Atlanta"
 const BuilderId = "askholme.vultr"
 
-type config struct {
-    common.PackerConfig       `mapstructure:",squash"`
-  	APIKey            string  `mapstructure:"api_key"`
-  	Region            string  `mapstructure:"region"`
-  	Plan              string  `mapstructure:"plan"`
-  	Os                string  `mapstructure:"os"`
-    OsSnapshot        string  `mapstructure:"os_snapshot"`
-    SnapshotName      string  `mapstructure:"snapshot_name"`
-    IpxeUrl           string  `mapstructure:"ipxe"`
+type Config struct {
+	common.PackerConfig `mapstructure:",squash"`
+	APIKey              string `mapstructure:"api_key"`
+	Region              string `mapstructure:"region"`
+	Plan                string `mapstructure:"plan"`
+	Os                  string `mapstructure:"os"`
+	OsSnapshot          string `mapstructure:"os_snapshot"`
+	SnapshotName        string `mapstructure:"snapshot_name"`
+	IpxeUrl             string `mapstructure:"ipxe"`
 
-  	PrivateNetworking bool    `mapstructure:"private_networking"`
-    IPv6              bool    `mapstructure:"IPv6"`    
-  	SSHUsername       string  `mapstructure:"ssh_username"`
-    SSHPassword       string  `mapstructure:"ssh_password"`
-    SSHPrivateKey     string  `mapstructure:"ssh_key"`
-  	SSHPort           uint    `mapstructure:"ssh_port"`
-    
-  	RawSSHTimeout     string    `mapstructure:"ssh_timeout"`
-  	RawStateTimeout   string    `mapstructure:"state_timeout"`
+	PrivateNetworking bool   `mapstructure:"private_networking"`
+	IPv6              bool   `mapstructure:"IPv6"`
+	SSHUsername       string `mapstructure:"ssh_username"`
+	SSHPassword       string `mapstructure:"ssh_password"`
+	SSHPrivateKey     string `mapstructure:"ssh_key"`
+	SSHPort           uint   `mapstructure:"ssh_port"`
 
-  	// These are unexported since they're set by other fields
-  	// being set.
-  	sshTimeout   time.Duration
-  	stateTimeout time.Duration
-  	tpl *packer.ConfigTemplate
+	RawSSHTimeout   string `mapstructure:"ssh_timeout"`
+	RawStateTimeout string `mapstructure:"state_timeout"`
+
+	// These are unexported since they're set by other fields
+	// being set.
+	sshTimeout   time.Duration
+	stateTimeout time.Duration
+	tpl          *interpolate.Context
 }
+
 // Assume this implements packer.Builder
-type Builder struct{
-  config config
-  runner multistep.Runner
+type Builder struct {
+	config Config
+	runner multistep.Runner
 }
 
 func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
-	md, err := common.DecodeConfig(&b.config, raws...)
+	err := config.Decode(&b.config, &config.DecodeOpts{
+		Interpolate: true,
+	}, raws...)
 	if err != nil {
 		return nil, err
 	}
-
-	b.config.tpl, err = packer.NewConfigTemplate()
-	if err != nil {
-		return nil, err
-	}
-	b.config.tpl.UserVars = b.config.PackerUserVars
+	b.config.tpl.UserVariables = b.config.PackerUserVars
 
 	// Accumulate any errors
-	errs := common.CheckUnusedConfig(md)
+	var errs *packer.MultiError
 
 	// Optional configuration with defaults
 	if b.config.APIKey == "" {
@@ -97,7 +101,7 @@ func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
 		// Default to port 22 per DO default
 		b.config.SSHPort = 22
 	}
-  
+
 	if b.config.RawSSHTimeout == "" {
 		// Default to 1 minute timeouts
 		b.config.RawSSHTimeout = "1m"
@@ -109,38 +113,15 @@ func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
 		b.config.RawStateTimeout = "6m"
 	}
 
-	templates := map[string]*string{
-		"region":        &b.config.Region,
-		"plan":          &b.config.Plan,
-		"os":            &b.config.Os,
-    "snapshot":      &b.config.OsSnapshot,
-		"api_key":       &b.config.APIKey,
-		"snapshot_name": &b.config.SnapshotName,
-		"ssh_username":  &b.config.SSHUsername,
-    "ssh_password":  &b.config.SSHPassword,
-    "ssh_privatekey":&b.config.SSHPrivateKey,
-		"ssh_timeout":   &b.config.RawSSHTimeout,
-		"state_timeout": &b.config.RawStateTimeout,
-	}
-
-	for n, ptr := range templates {
-		var err error
-		*ptr, err = b.config.tpl.Process(*ptr, nil)
-		if err != nil {
-			errs = packer.MultiErrorAppend(
-				errs, fmt.Errorf("Error processing %s: %s", n, err))
-		}
-	}
-
 	// Required configurations that will display errors if not set
 	if b.config.APIKey == "" {
 		errs = packer.MultiErrorAppend(
 			errs, errors.New("an api_key must be specified"))
 	}
-  if (b.config.OsSnapshot != "" || b.config.IpxeUrl != "") && (b.config.SSHPassword == "" && b.config.SSHPrivateKey== "") {
-    errs = packer.MultiErrorAppend(
-      errs, errors.New("SSH Password or private key must be provided when building from snapshot or custom OS"))
-  }
+	if (b.config.OsSnapshot != "" || b.config.IpxeUrl != "") && (b.config.SSHPassword == "" && b.config.SSHPrivateKey == "") {
+		errs = packer.MultiErrorAppend(
+			errs, errors.New("SSH Password or private key must be provided when building from snapshot or custom OS"))
+	}
 	sshTimeout, err := time.ParseDuration(b.config.RawSSHTimeout)
 	if err != nil {
 		errs = packer.MultiErrorAppend(
@@ -163,10 +144,10 @@ func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
 
 func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packer.Artifact, error) {
 	// Initialize the DO API client
-	client,err := vultr.NewClient(b.config.APIKey)
-  if err != nil {
-    return nil,err
-  }
+	client, err := vultr.NewClient(b.config.APIKey)
+	if err != nil {
+		return nil, err
+	}
 	// Set up the state
 	state := new(multistep.BasicStateBag)
 	state.Put("config", b.config)
@@ -178,13 +159,12 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 	steps := []multistep.Step{
 		new(stepCreateServer),
 		new(stepServerInfo),
-		&common.StepConnectSSH{
-			SSHAddress:     sshAddress,
+		&communicator.StepConnectSSH{
+			Host:     sshAddress,
 			SSHConfig:      sshConfig,
-			SSHWaitTimeout: 15 * time.Minute,
 		},
 		new(common.StepProvision),
-    new(stepShutdown),
+		new(stepShutdown),
 		new(stepHalt),
 		new(stepSnapshot),
 	}
@@ -212,9 +192,9 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 	}
 
 	var region string
-  //  GetId ensures we have an idea and then we get the label. We ignore errors because they would have shown earlier
-  region_id,_ := client.Params.GetId("region",b.config.Region)
-  region,_ = client.Params.GetLabel("region",region_id)
+	//  GetId ensures we have an idea and then we get the label. We ignore errors because they would have shown earlier
+	region_id, _ := client.Params.GetId("region", b.config.Region)
+	region, _ = client.Params.GetLabel("region", region_id)
 
 	if err != nil {
 		return nil, err
@@ -235,7 +215,6 @@ func (b *Builder) Cancel() {
 		b.runner.Cancel()
 	}
 }
-
 
 func main() {
 	server, err := plugin.Server()

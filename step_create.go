@@ -1,10 +1,11 @@
 package main
+
 import (
 	"fmt"
-  "github.com/askholme/vultr"
+
+	"github.com/askholme/vultr"
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/packer"
-  "github.com/mitchellh/packer/common/uuid"
 )
 
 type stepCreateServer struct {
@@ -14,33 +15,33 @@ type stepCreateServer struct {
 func (s *stepCreateServer) Run(state multistep.StateBag) multistep.StepAction {
 	client := state.Get("client").(*vultr.Client)
 	ui := state.Get("ui").(packer.Ui)
-	c := state.Get("config").(config)
-  var keyId string
-  var err error
-  if c.SSHPrivateKey != "" {
-    ui.Say("Uploading SSH key")
-    name := fmt.Sprintf("packer-%s", uuid.TimeOrderedUUID())
-    keyId,err = client.CreateSSHKey(name,c.SSHPrivateKey)
-    if err != nil {
-  		err := fmt.Errorf("Error uploading ssh key: %s", err)
-  		state.Put("error", err)
-  		ui.Error(err.Error())
-  		return multistep.ActionHalt
-    }
-  }
+	c := state.Get("config").(Config)
+
+	var err error
+	if c.SSHPrivateKey != "" {
+		ui.Say("Uploading SSH key")
+		// name := fmt.Sprintf("packer-%s", uuid.TimeOrderedUUID())
+		//    keyId,err = client.CreateSSHKey(name,c.SSHPrivateKey)
+		//    if err != nil {
+		//  		err := fmt.Errorf("Error uploading ssh key: %s", err)
+		//  		state.Put("error", err)
+		//  		ui.Error(err.Error())
+		//  		return multistep.ActionHalt
+		//    }
+	}
 	ui.Say("Creating server...")
 	// Create the droplet based on configuration
-  opts := client.CreateOpts()
-  opts.Region = c.Region
-  opts.Plan = c.Plan
-  opts.Os = c.Os
-  opts.PrivateNet = c.PrivateNetworking
-  opts.IpV6 = c.IPv6
-  opts.IpxeUrl = c.IpxeUrl
-  if c.SSHPrivateKey != "" {
-    opts.SSHKeyId = keyId
-  }
-  serverId,err := client.CreateServer(&opts)
+	opts := client.CreateOpts()
+	opts.Region = c.Region
+	opts.Plan = c.Plan
+	opts.Os = c.Os
+	opts.PrivateNet = c.PrivateNetworking
+	opts.IpV6 = c.IPv6
+	opts.IpxeUrl = c.IpxeUrl
+	if c.SSHPrivateKey != "" {
+		//    opts.SSHKeyId = keyId
+	}
+	serverId, err := client.CreateServer(&opts)
 
 	if err != nil {
 		err := fmt.Errorf("Error creating server: %s", err)
@@ -74,6 +75,6 @@ func (s *stepCreateServer) Cleanup(state multistep.StateBag) {
 	err := client.DeleteServer(s.serverId)
 	if err != nil {
 		ui.Error(fmt.Sprintf(
-			"Error destroying server. Please destroy it manually, id is: %v - error was %s", s.serverId,err))
+			"Error destroying server. Please destroy it manually, id is: %v - error was %s", s.serverId, err))
 	}
 }

@@ -17,6 +17,10 @@ type Artifact struct {
 	client *vultr.Client
 }
 
+func (*Artifact) State(name string) interface{} {
+	return nil
+}
+
 func (*Artifact) BuilderId() string {
 	return BuilderId
 }
