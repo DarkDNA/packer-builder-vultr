@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/askholme/vultr"
+	"github.com/DarkDNA/vultr"
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/packer"
 )

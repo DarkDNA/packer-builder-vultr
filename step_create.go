@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/askholme/vultr"
+	"github.com/DarkDNA/vultr"
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/packer"
 )
@@ -18,18 +18,20 @@ func (s *stepCreateServer) Run(state multistep.StateBag) multistep.StepAction {
 	c := state.Get("config").(Config)
 
 	var err error
+	var keyId string
 	if c.SSHPrivateKey != "" {
 		ui.Say("Uploading SSH key")
-		// name := fmt.Sprintf("packer-%s", uuid.TimeOrderedUUID())
-		//    keyId,err = client.CreateSSHKey(name,c.SSHPrivateKey)
-		//    if err != nil {
-		//  		err := fmt.Errorf("Error uploading ssh key: %s", err)
-		//  		state.Put("error", err)
-		//  		ui.Error(err.Error())
-		//  		return multistep.ActionHalt
-		//    }
+		keyId, err = client.CreateSSHKey(name, c.SSHPrivateKey)
+
+		if err != nil {
+			err := fmt.Errorf("Error uploading ssh key: %s", err)
+			state.Put("error", err)
+			ui.Error(err.Error())
+			return multistep.ActionHalt
+		}
 	}
 	ui.Say("Creating server...")
+
 	// Create the droplet based on configuration
 	opts := client.CreateOpts()
 	opts.Region = c.Region
@@ -39,7 +41,7 @@ func (s *stepCreateServer) Run(state multistep.StateBag) multistep.StepAction {
 	opts.IpV6 = c.IPv6
 	opts.IpxeUrl = c.IpxeUrl
 	if c.SSHPrivateKey != "" {
-		//    opts.SSHKeyId = keyId
+		opts.SSHKeyId = keyId
 	}
 	serverId, err := client.CreateServer(&opts)
 
@@ -67,7 +69,6 @@ func (s *stepCreateServer) Cleanup(state multistep.StateBag) {
 
 	client := state.Get("client").(*vultr.Client)
 	ui := state.Get("ui").(packer.Ui)
-	//c := state.Get("config").(config)
 
 	// Destroy the server we just created
 	ui.Say("Destroying server...")

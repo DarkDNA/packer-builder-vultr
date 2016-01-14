@@ -5,7 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/askholme/vultr"
+	"github.com/DarkDNA/vultr"
+
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/packer"
 )

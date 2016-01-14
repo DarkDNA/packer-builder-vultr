@@ -1,8 +1,10 @@
 package main
+
 import (
 	"fmt"
 	"log"
-  "github.com/askholme/vultr"
+
+	"github.com/DarkDNA/vultr"
 )
 
 type Artifact struct {
